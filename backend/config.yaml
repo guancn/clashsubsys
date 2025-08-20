@@ -1,0 +1,64 @@
+# Clash 订阅转换服务配置文件
+
+# 服务器配置
+server:
+  host: "0.0.0.0"
+  port: 8000
+  debug: false
+  
+# CORS 配置
+cors:
+  allow_origins: ["*"]
+  allow_methods: ["GET", "POST", "PUT", "DELETE"]
+  allow_headers: ["*"]
+
+# 默认规则配置
+rules:
+  # 默认远程规则文件URL
+  default_remote_config: "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/config/ACL4SSR_Online.ini"
+  
+  # 节点过滤规则
+  node_filters:
+    - "(?i)traffic|expire|官网|产品|平台"
+    - "(?i)套餐|到期|流量|版本"
+  
+  # 默认规则组
+  default_rules:
+    - "RULE-SET,applications,DIRECT"
+    - "DOMAIN,clash.razord.top,DIRECT"
+    - "DOMAIN,yacd.haishan.me,DIRECT"
+    - "RULE-SET,private,DIRECT"
+    - "RULE-SET,reject,REJECT"
+    - "RULE-SET,icloud,DIRECT"
+    - "RULE-SET,apple,DIRECT"
+    - "RULE-SET,google,♻️ 自动选择"
+    - "RULE-SET,proxy,♻️ 自动选择"
+    - "RULE-SET,direct,DIRECT"
+    - "RULE-SET,lancidr,DIRECT"
+    - "RULE-SET,cncidr,DIRECT"
+    - "RULE-SET,telegramcidr,📲 电报消息"
+    - "GEOIP,LAN,DIRECT"
+    - "GEOIP,CN,DIRECT"
+    - "MATCH,🐟 漏网之鱼"
+
+# 代理组配置模板
+proxy_groups:
+  templates:
+    auto_select:
+      name: "♻️ 自动选择"
+      type: "url-test"
+      url: "http://www.gstatic.com/generate_204"
+      interval: 300
+    manual_select:
+      name: "🚀 节点选择"
+      type: "select"
+    fallback:
+      name: "🔗 故障转移"
+      type: "fallback"
+      url: "http://www.gstatic.com/generate_204"
+      interval: 300
+
+# 日志配置
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

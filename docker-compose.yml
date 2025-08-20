@@ -1,0 +1,70 @@
+# Docker Compose 配置文件
+# 用户可以通过环境变量自定义端口配置
+
+version: '3.8'
+
+services:
+  # 后端服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: clash-converter-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - ./backend/config.yaml:/app/config.yaml:ro
+      - ./backend/logs:/app/logs
+    networks:
+      - clash-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 前端服务
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: clash-converter-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      - backend
+    networks:
+      - clash-network
+    environment:
+      - VITE_API_BASE_URL=http://localhost:${BACKEND_PORT:-8000}
+
+  # Nginx 反向代理（可选）
+  nginx:
+    image: nginx:alpine
+    container_name: clash-converter-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - clash-network
+    profiles:
+      - nginx  # 使用 --profile nginx 来启用
+
+networks:
+  clash-network:
+    driver: bridge
+
+volumes:
+  backend-logs:
+    driver: local

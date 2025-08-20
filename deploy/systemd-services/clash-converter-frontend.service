@@ -1,0 +1,90 @@
+# Systemd 服务配置 - 前端服务
+# 位置: /etc/systemd/system/clash-converter-frontend.service
+# 注意: 通常前端使用 Nginx 提供静态文件，此服务文件仅供参考
+
+[Unit]
+Description=Clash Subscription Converter Frontend Service
+Documentation=https://github.com/your-org/clash-converter
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/clash-converter/frontend
+
+# 环境变量
+Environment="NODE_ENV=production"
+Environment="PORT=3000"
+EnvironmentFile=-/opt/clash-converter/.env
+
+# 启动命令 (使用简单的静态文件服务器)
+ExecStart=/usr/bin/node -e "
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const port = process.env.FRONTEND_PORT || process.env.PORT || 3000;
+
+const mimeTypes = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon'
+};
+
+http.createServer((req, res) => {
+  let filePath = '.' + req.url;
+  if (filePath === './') filePath = './index.html';
+  
+  const extname = String(path.extname(filePath)).toLowerCase();
+  const contentType = mimeTypes[extname] || 'application/octet-stream';
+  
+  fs.readFile(filePath, (error, content) => {
+    if (error) {
+      if (error.code === 'ENOENT') {
+        fs.readFile('./index.html', (error, content) => {
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.end(content, 'utf-8');
+        });
+      } else {
+        res.writeHead(500);
+        res.end('Server Error: ' + error.code);
+      }
+    } else {
+      res.writeHead(200, { 'Content-Type': contentType });
+      res.end(content, 'utf-8');
+    }
+  });
+}).listen(port, () => console.log('Frontend server running on port ' + port));
+"
+
+# 重启策略
+Restart=always
+RestartSec=10
+
+# 安全设置
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+
+# 资源限制
+LimitNOFILE=65536
+LimitNPROC=1024
+
+# 日志
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=clash-converter-frontend
+
+# 超时设置
+TimeoutStartSec=30
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

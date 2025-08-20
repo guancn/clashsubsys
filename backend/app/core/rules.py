@@ -1,0 +1,502 @@
+"""
+规则处理器 - 处理远程配置和自定义规则
+"""
+
+import re
+import httpx
+import logging
+from typing import List, Dict, Any, Optional, Tuple
+from configparser import ConfigParser
+from io import StringIO
+
+from ..models.schemas import ProxyGroup, Rule
+
+logger = logging.getLogger(__name__)
+
+
+class RuleProcessor:
+    """规则处理器"""
+    
+    def __init__(self):
+        self.default_groups = [
+            {
+                "name": "🚀 节点选择",
+                "type": "select",
+                "proxies": ["♻️ 自动选择", "🔗 故障转移", "🔄 负载均衡", "DIRECT"]
+            },
+            {
+                "name": "♻️ 自动选择",
+                "type": "url-test",
+                "url": "http://www.gstatic.com/generate_204",
+                "interval": 300,
+                "tolerance": 50,
+                "proxies": []
+            },
+            {
+                "name": "🔗 故障转移",
+                "type": "fallback",
+                "url": "http://www.gstatic.com/generate_204",
+                "interval": 300,
+                "proxies": []
+            },
+            {
+                "name": "🔄 负载均衡",
+                "type": "load-balance",
+                "strategy": "consistent-hashing",
+                "url": "http://www.gstatic.com/generate_204",
+                "interval": 300,
+                "proxies": []
+            },
+            {
+                "name": "🐟 漏网之鱼",
+                "type": "select",
+                "proxies": ["🚀 节点选择", "DIRECT", "REJECT"]
+            },
+            {
+                "name": "📲 电报消息",
+                "type": "select",
+                "proxies": ["🚀 节点选择", "♻️ 自动选择", "DIRECT"]
+            },
+            {
+                "name": "🎯 全球直连",
+                "type": "select",
+                "proxies": ["DIRECT", "🚀 节点选择"]
+            },
+            {
+                "name": "🛑 广告拦截",
+                "type": "select",
+                "proxies": ["REJECT", "DIRECT"]
+            },
+            {
+                "name": "🍃 应用净化",
+                "type": "select",
+                "proxies": ["REJECT", "DIRECT"]
+            }
+        ]
+        
+        self.default_rules = [
+            "RULE-SET,applications,DIRECT",
+            "DOMAIN,clash.razord.top,DIRECT",
+            "DOMAIN,yacd.haishan.me,DIRECT",
+            "RULE-SET,private,DIRECT",
+            "RULE-SET,reject,🛑 广告拦截",
+            "RULE-SET,icloud,🍃 应用净化",
+            "RULE-SET,apple,🎯 全球直连",
+            "RULE-SET,google,🚀 节点选择",
+            "RULE-SET,proxy,🚀 节点选择",
+            "RULE-SET,direct,🎯 全球直连",
+            "RULE-SET,lancidr,DIRECT",
+            "RULE-SET,cncidr,🎯 全球直连",
+            "RULE-SET,telegramcidr,📲 电报消息",
+            "GEOIP,LAN,DIRECT",
+            "GEOIP,CN,🎯 全球直连",
+            "MATCH,🐟 漏网之鱼"
+        ]
+    
+    async def fetch_remote_config(self, url: str) -> Optional[Dict[str, Any]]:
+        """
+        获取远程配置文件
+        
+        Args:
+            url: 远程配置文件 URL
+            
+        Returns:
+            解析后的配置字典
+        """
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+                
+                content = response.text
+                
+                # 尝试解析 INI 格式
+                if self._is_ini_format(content):
+                    return self._parse_ini_config(content)
+                
+                # 尝试解析其他格式（如 YAML）
+                # 这里可以扩展支持更多格式
+                logger.warning(f"Unsupported config format from {url}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Failed to fetch remote config from {url}: {e}")
+            return None
+    
+    def _is_ini_format(self, content: str) -> bool:
+        """检查内容是否为 INI 格式"""
+        return '[' in content and ']' in content and '=' in content
+    
+    def _parse_ini_config(self, content: str) -> Dict[str, Any]:
+        """
+        解析 INI 格式的配置文件
+        
+        Args:
+            content: INI 配置内容
+            
+        Returns:
+            解析后的配置字典
+        """
+        try:
+            config = ConfigParser()
+            config.read_string(content)
+            
+            result = {
+                'custom_proxy_group': [],
+                'ruleset': [],
+                'rename': [],
+                'template': {},
+            }
+            
+            # 解析 custom_proxy_group 部分
+            if config.has_section('custom_proxy_group'):
+                for key, value in config.items('custom_proxy_group'):
+                    result['custom_proxy_group'].append(value)
+            
+            # 解析 ruleset 部分
+            if config.has_section('ruleset'):
+                for key, value in config.items('ruleset'):
+                    result['ruleset'].append(value)
+            
+            # 解析 template 部分
+            if config.has_section('template'):
+                for key, value in config.items('template'):
+                    result['template'][key] = value
+            
+            # 解析节点重命名规则
+            if config.has_section('rename_node'):
+                for key, value in config.items('rename_node'):
+                    result['rename'].append(f"{key},{value}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Failed to parse INI config: {e}")
+            return {}
+    
+    def generate_proxy_groups(self, 
+                            nodes: List[str], 
+                            custom_groups: Optional[List[str]] = None,
+                            node_filters: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+        """
+        生成代理组配置
+        
+        Args:
+            nodes: 节点名称列表
+            custom_groups: 自定义代理组配置
+            node_filters: 节点过滤规则
+            
+        Returns:
+            代理组配置列表
+        """
+        try:
+            groups = []
+            
+            # 处理自定义代理组
+            if custom_groups:
+                for group_config in custom_groups:
+                    group = self._parse_custom_group(group_config, nodes, node_filters)
+                    if group:
+                        groups.append(group)
+            else:
+                # 使用默认代理组
+                for default_group in self.default_groups:
+                    group = dict(default_group)
+                    
+                    # 为需要节点的组添加节点
+                    if group['name'] in ['♻️ 自动选择', '🔗 故障转移', '🔄 负载均衡']:
+                        group['proxies'] = nodes[:]  # 复制节点列表
+                    elif group['name'] == '🚀 节点选择':
+                        # 节点选择组包含其他策略组和所有节点
+                        strategy_groups = ["♻️ 自动选择", "🔗 故障转移", "🔄 负载均衡", "DIRECT"]
+                        group['proxies'] = strategy_groups + nodes
+                    
+                    groups.append(group)
+            
+            return groups
+            
+        except Exception as e:
+            logger.error(f"Failed to generate proxy groups: {e}")
+            return self.default_groups
+    
+    def _parse_custom_group(self, 
+                          group_config: str, 
+                          nodes: List[str],
+                          node_filters: Optional[Dict[str, str]] = None) -> Optional[Dict[str, Any]]:
+        """
+        解析自定义代理组配置
+        
+        格式: Group_Name`select`[]Group_1[]Group_2[].*HK.*`http://www.gstatic.com/generate_204`300
+        """
+        try:
+            parts = group_config.split('`')
+            if len(parts) < 3:
+                return None
+            
+            name = parts[0]
+            group_type = parts[1]
+            
+            # 解析代理列表部分
+            proxies_part = parts[2]
+            url = parts[3] if len(parts) > 3 else "http://www.gstatic.com/generate_204"
+            interval = int(parts[4]) if len(parts) > 4 and parts[4].isdigit() else 300
+            
+            # 解析代理
+            proxies = []
+            
+            # 按 [] 分割
+            proxy_items = re.findall(r'\[(.*?)\]', proxies_part)
+            
+            for item in proxy_items:
+                if item == 'DIRECT' or item == 'REJECT':
+                    proxies.append(item)
+                elif item.startswith('[]'):
+                    # 引用其他组
+                    proxies.append(item[2:])
+                else:
+                    # 节点过滤规则
+                    if '.*' in item or item.startswith('^') or item.endswith('$'):
+                        # 正则表达式过滤
+                        pattern = re.compile(item)
+                        filtered_nodes = [node for node in nodes if pattern.search(node)]
+                        proxies.extend(filtered_nodes)
+                    else:
+                        # 直接添加
+                        if item in nodes:
+                            proxies.append(item)
+            
+            # 如果没有找到节点，添加所有节点
+            if not proxies and group_type in ['url-test', 'fallback', 'load-balance']:
+                proxies = nodes[:]
+            
+            group = {
+                'name': name,
+                'type': group_type,
+                'proxies': proxies
+            }
+            
+            # 添加测试相关配置
+            if group_type in ['url-test', 'fallback', 'load-balance']:
+                group['url'] = url
+                group['interval'] = interval
+                
+                if group_type == 'url-test':
+                    group['tolerance'] = 50
+                elif group_type == 'load-balance':
+                    group['strategy'] = 'consistent-hashing'
+            
+            return group
+            
+        except Exception as e:
+            logger.error(f"Failed to parse custom group: {group_config}, error: {e}")
+            return None
+    
+    def generate_rules(self, 
+                      custom_rulesets: Optional[List[str]] = None,
+                      custom_rules: Optional[List[str]] = None) -> List[str]:
+        """
+        生成规则列表
+        
+        Args:
+            custom_rulesets: 自定义规则集配置
+            custom_rules: 自定义规则列表
+            
+        Returns:
+            规则列表
+        """
+        try:
+            rules = []
+            
+            # 处理自定义规则集
+            if custom_rulesets:
+                for ruleset_config in custom_rulesets:
+                    rule = self._parse_custom_ruleset(ruleset_config)
+                    if rule:
+                        rules.append(rule)
+            
+            # 添加自定义规则
+            if custom_rules:
+                rules.extend(custom_rules)
+            
+            # 如果没有自定义规则，使用默认规则
+            if not rules:
+                rules = self.default_rules[:]
+            
+            return rules
+            
+        except Exception as e:
+            logger.error(f"Failed to generate rules: {e}")
+            return self.default_rules
+    
+    def _parse_custom_ruleset(self, ruleset_config: str) -> Optional[str]:
+        """
+        解析自定义规则集配置
+        
+        格式: RULE-SET,https://raw.githubusercontent.com/...,PROXY
+        """
+        try:
+            parts = ruleset_config.split(',', 2)
+            if len(parts) >= 2:
+                rule_type = parts[0]
+                rule_content = parts[1]
+                policy = parts[2] if len(parts) > 2 else "PROXY"
+                
+                # 如果是 URL，提取规则名
+                if rule_content.startswith('http'):
+                    rule_name = rule_content.split('/')[-1].replace('.list', '').replace('.txt', '')
+                    return f"RULE-SET,{rule_name},{policy}"
+                else:
+                    return f"{rule_type},{rule_content},{policy}"
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to parse custom ruleset: {ruleset_config}, error: {e}")
+            return None
+    
+    def apply_node_filters(self, 
+                          nodes: List[str],
+                          include_pattern: Optional[str] = None,
+                          exclude_pattern: Optional[str] = None) -> List[str]:
+        """
+        应用节点过滤规则
+        
+        Args:
+            nodes: 原始节点列表
+            include_pattern: 包含规则（正则表达式）
+            exclude_pattern: 排除规则（正则表达式）
+            
+        Returns:
+            过滤后的节点列表
+        """
+        try:
+            filtered_nodes = nodes[:]
+            
+            # 应用包含规则
+            if include_pattern:
+                pattern = re.compile(include_pattern, re.IGNORECASE)
+                filtered_nodes = [node for node in filtered_nodes if pattern.search(node)]
+            
+            # 应用排除规则
+            if exclude_pattern:
+                pattern = re.compile(exclude_pattern, re.IGNORECASE)
+                filtered_nodes = [node for node in filtered_nodes if not pattern.search(node)]
+            
+            return filtered_nodes
+            
+        except Exception as e:
+            logger.error(f"Failed to apply node filters: {e}")
+            return nodes
+    
+    def apply_node_rename(self, 
+                         nodes: List[str], 
+                         rename_rules: Optional[List[str]] = None) -> Dict[str, str]:
+        """
+        应用节点重命名规则
+        
+        Args:
+            nodes: 节点名称列表
+            rename_rules: 重命名规则列表，格式: "old_pattern,new_pattern"
+            
+        Returns:
+            重命名映射字典 {old_name: new_name}
+        """
+        try:
+            rename_map = {}
+            
+            if not rename_rules:
+                return {node: node for node in nodes}
+            
+            for node in nodes:
+                new_name = node
+                
+                for rule in rename_rules:
+                    try:
+                        parts = rule.split(',', 1)
+                        if len(parts) == 2:
+                            pattern, replacement = parts
+                            new_name = re.sub(pattern, replacement, new_name, flags=re.IGNORECASE)
+                    except Exception as e:
+                        logger.warning(f"Failed to apply rename rule {rule}: {e}")
+                        continue
+                
+                rename_map[node] = new_name
+            
+            return rename_map
+            
+        except Exception as e:
+            logger.error(f"Failed to apply node rename: {e}")
+            return {node: node for node in nodes}
+    
+    def add_emoji_flags(self, node_name: str) -> str:
+        """
+        为节点名称添加国旗 Emoji
+        
+        Args:
+            node_name: 原始节点名称
+            
+        Returns:
+            添加 Emoji 后的节点名称
+        """
+        flag_map = {
+            # 中国地区
+            r'港|hk|hong.?kong': '🇭🇰',
+            r'台|tw|taiwan': '🇹🇼',
+            r'澳门|macao': '🇲🇴',
+            r'中国|china|cn': '🇨🇳',
+            
+            # 亚洲
+            r'日本|jp|japan': '🇯🇵',
+            r'韩国|kr|korea': '🇰🇷',
+            r'新加坡|sg|singapore': '🇸🇬',
+            r'马来西亚|my|malaysia': '🇲🇾',
+            r'泰国|th|thailand': '🇹🇭',
+            r'印度|in|india': '🇮🇳',
+            r'菲律宾|ph|philippines': '🇵🇭',
+            r'印尼|id|indonesia': '🇮🇩',
+            r'越南|vn|vietnam': '🇻🇳',
+            
+            # 欧洲
+            r'英国|uk|britain|united.?kingdom': '🇬🇧',
+            r'法国|fr|france': '🇫🇷',
+            r'德国|de|germany': '🇩🇪',
+            r'荷兰|nl|netherlands': '🇳🇱',
+            r'意大利|it|italy': '🇮🇹',
+            r'西班牙|es|spain': '🇪🇸',
+            r'俄罗斯|ru|russia': '🇷🇺',
+            r'瑞士|ch|switzerland': '🇨🇭',
+            r'瑞典|se|sweden': '🇸🇪',
+            r'挪威|no|norway': '🇳🇴',
+            r'芬兰|fi|finland': '🇫🇮',
+            r'丹麦|dk|denmark': '🇩🇰',
+            r'波兰|pl|poland': '🇵🇱',
+            r'土耳其|tr|turkey': '🇹🇷',
+            
+            # 美洲
+            r'美国|us|united.?states|america': '🇺🇸',
+            r'加拿大|ca|canada': '🇨🇦',
+            r'墨西哥|mx|mexico': '🇲🇽',
+            r'巴西|br|brazil': '🇧🇷',
+            r'阿根廷|ar|argentina': '🇦🇷',
+            
+            # 大洋洲
+            r'澳大利亚|au|australia': '🇦🇺',
+            r'新西兰|nz|new.?zealand': '🇳🇿',
+            
+            # 非洲
+            r'南非|za|south.?africa': '🇿🇦',
+            r'埃及|eg|egypt': '🇪🇬',
+            
+            # 中东
+            r'以色列|il|israel': '🇮🇱',
+            r'阿联酋|ae|uae': '🇦🇪',
+        }
+        
+        for pattern, flag in flag_map.items():
+            if re.search(pattern, node_name, re.IGNORECASE):
+                # 如果节点名称中还没有这个国旗，则添加
+                if flag not in node_name:
+                    return f"{flag} {node_name}"
+                return node_name
+        
+        return node_name

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Clash 订阅转换 - 高效稳定的代理订阅转换服务</title>
+    <meta name="description" content="专业的 Clash 代理订阅转换服务，支持多种协议转换，提供自定义规则配置，简单易用的在线工具。" />
+    <meta name="keywords" content="clash,订阅转换,代理,vpn,翻墙,科学上网,subconverter" />
+    <meta name="author" content="Clash Converter Team" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="/" />
+    <meta property="og:title" content="Clash 订阅转换 - 高效稳定的代理订阅转换服务" />
+    <meta property="og:description" content="专业的 Clash 代理订阅转换服务，支持多种协议转换，提供自定义规则配置。" />
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="/" />
+    <meta property="twitter:title" content="Clash 订阅转换" />
+    <meta property="twitter:description" content="专业的 Clash 代理订阅转换服务" />
+    
+    <!-- Preconnect for performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    
+    <!-- Theme color -->
+    <meta name="theme-color" content="#409eff" />
+    
+    <!-- PWA related -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Clash 转换器" />
+    
+    <!-- Loading styles -->
+    <style>
+      #loading {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: #fff;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        flex-direction: column;
+      }
+      
+      .loading-spinner {
+        width: 50px;
+        height: 50px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #409eff;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 16px;
+      }
+      
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      
+      .loading-text {
+        color: #666;
+        font-size: 14px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <!-- 加载动画 -->
+      <div id="loading">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">正在加载 Clash 订阅转换服务...</div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

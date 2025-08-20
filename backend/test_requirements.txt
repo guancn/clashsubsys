@@ -1,0 +1,26 @@
+# 测试依赖包
+
+# 测试框架
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+pytest-xdist==3.5.0
+
+# HTTP 测试
+httpx==0.25.2
+requests-mock==1.11.0
+
+# 性能测试
+pytest-benchmark==4.0.0
+
+# 测试报告
+pytest-html==4.1.1
+coverage==7.3.2
+
+# 数据生成
+faker==20.1.0
+
+# 其他工具
+freezegun==1.2.2  # 时间模拟
+responses==0.24.1  # HTTP 响应模拟

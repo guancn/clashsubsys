@@ -1,0 +1,50 @@
+# Systemd 服务配置 - 后端服务
+# 位置: /etc/systemd/system/clash-converter-backend.service
+
+[Unit]
+Description=Clash Subscription Converter Backend Service
+Documentation=https://github.com/your-org/clash-converter
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/clash-converter/backend
+
+# 环境变量
+Environment="PYTHONPATH=/opt/clash-converter/backend"
+Environment="LOG_LEVEL=INFO"
+Environment="PORT=8000"
+EnvironmentFile=-/opt/clash-converter/.env
+
+# 启动命令
+ExecStart=/opt/clash-converter/backend/venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port ${BACKEND_PORT:-8000}
+
+# 重启策略
+Restart=always
+RestartSec=10
+
+# 安全设置
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/clash-converter/backend/logs
+ReadWritePaths=/tmp
+
+# 资源限制
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# 日志
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=clash-converter-backend
+
+# 超时设置
+TimeoutStartSec=60
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
