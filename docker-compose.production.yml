@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  # Clash 转换器后端服务
+  clash-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: clash-converter-backend
+    restart: unless-stopped
+    ports:
+      # 使用不同端口，避免与现有系统冲突
+      - "127.0.0.1:8001:8000"
+    environment:
+      - PYTHONPATH=/app
+      - APP_PREFIX=/clash/api
+    volumes:
+      - ./backend/config.production.yaml:/app/config.yaml:ro
+      - ./backend/logs:/app/logs
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - clash-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Clash 转换器前端服务  
+  clash-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=https://sub.guancn.me/clash/api
+        - VITE_APP_PREFIX=/clash
+    container_name: clash-converter-frontend
+    restart: unless-stopped
+    ports:
+      # 使用不同端口，避免与现有系统冲突
+      - "127.0.0.1:3001:80"
+    depends_on:
+      - clash-backend
+    networks:
+      - clash-network
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+
+networks:
+  clash-network:
+    driver: bridge
+    name: clash-network

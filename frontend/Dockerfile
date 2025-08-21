@@ -18,6 +18,14 @@ RUN pnpm install --frozen-lockfile
 # 复制源代码
 COPY . .
 
+# 接收构建参数
+ARG VITE_API_BASE_URL=http://localhost:8000
+ARG VITE_APP_PREFIX=/
+
+# 设置环境变量
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ENV VITE_APP_PREFIX=$VITE_APP_PREFIX
+
 # 构建应用
 RUN pnpm run build
 
