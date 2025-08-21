@@ -195,12 +195,37 @@ update_nginx_config() {
     fi
 }
 
+# 清理旧容器
+cleanup_old_containers() {
+    log_info "清理旧容器..."
+    
+    # 停止并移除旧容器
+    if $COMPOSE_CMD -f docker-compose.production.yml ps | grep -q "clash-"; then
+        log_info "发现运行中的容器，正在停止..."
+        $COMPOSE_CMD -f docker-compose.production.yml down
+        log_success "旧容器已停止并移除"
+    else
+        log_info "未发现运行中的容器"
+    fi
+    
+    # 强制清理可能残留的容器
+    for container in clash-converter-backend clash-converter-frontend; do
+        if docker ps -aq -f name=$container | grep -q .; then
+            log_info "强制移除容器: $container"
+            docker rm -f $container || true
+        fi
+    done
+}
+
 # 构建和启动服务
 deploy_services() {
     log_info "构建和启动 Clash 转换器服务..."
     
     # 复制生产环境配置
     cp .env.production .env
+    
+    # 清理旧容器
+    cleanup_old_containers
     
     # 清理 Docker 缓存，确保使用新的 Dockerfile
     log_info "清理 Docker 构建缓存..."
