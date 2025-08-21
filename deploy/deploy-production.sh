@@ -75,10 +75,24 @@ check_docker() {
         exit 1
     fi
     
-    if ! command -v docker-compose &> /dev/null; then
+    # 检查 Docker Compose - 支持新旧两种版本
+    local compose_cmd=""
+    if command -v docker-compose &> /dev/null; then
+        compose_cmd="docker-compose"
+        log_info "检测到旧版 Docker Compose: $(docker-compose --version)"
+    elif docker compose version &> /dev/null; then
+        compose_cmd="docker compose"
+        log_info "检测到新版 Docker Compose: $(docker compose version)"
+    else
         log_error "Docker Compose 未安装，请先安装 Docker Compose"
+        log_info "可以通过以下方式安装："
+        log_info "  • 新版 (推荐): sudo apt install docker-compose-plugin"
+        log_info "  • 旧版: sudo apt install docker-compose"
         exit 1
     fi
+    
+    # 导出 compose 命令供后续使用
+    export COMPOSE_CMD="$compose_cmd"
     
     # 检查 Docker 服务状态
     if ! run_cmd systemctl is-active --quiet docker; then
@@ -86,7 +100,7 @@ check_docker() {
         exit 1
     fi
     
-    log_success "Docker 环境检查完成"
+    log_success "Docker 环境检查完成，使用命令: $COMPOSE_CMD"
 }
 
 # 检查端口占用
@@ -189,7 +203,7 @@ deploy_services() {
     cp .env.production .env
     
     # 构建和启动服务
-    docker-compose -f docker-compose.production.yml up -d --build
+    $COMPOSE_CMD -f docker-compose.production.yml up -d --build
     
     log_success "服务部署完成"
 }
@@ -223,7 +237,7 @@ verify_services() {
     if [ ${#failed_services[@]} -ne 0 ]; then
         log_error "以下服务部署失败: ${failed_services[*]}"
         log_info "查看服务日志:"
-        docker-compose -f docker-compose.production.yml logs
+        $COMPOSE_CMD -f docker-compose.production.yml logs
         exit 1
     fi
     
@@ -273,10 +287,10 @@ show_deployment_info() {
     echo "  • 原有 API: https://sub.guancn.me/sub"
     echo
     echo "🐳 Docker 管理命令:"
-    echo "  • 查看状态: docker-compose -f docker-compose.production.yml ps"
-    echo "  • 查看日志: docker-compose -f docker-compose.production.yml logs -f"
-    echo "  • 停止服务: docker-compose -f docker-compose.production.yml down"
-    echo "  • 重启服务: docker-compose -f docker-compose.production.yml restart"
+    echo "  • 查看状态: $COMPOSE_CMD -f docker-compose.production.yml ps"
+    echo "  • 查看日志: $COMPOSE_CMD -f docker-compose.production.yml logs -f"
+    echo "  • 停止服务: $COMPOSE_CMD -f docker-compose.production.yml down"
+    echo "  • 重启服务: $COMPOSE_CMD -f docker-compose.production.yml restart"
     echo
     echo "📝 重要提示:"
     echo "  • 新系统与现有系统完全独立，不会相互影响"
