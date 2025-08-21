@@ -5,7 +5,7 @@ services:
   clash-backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.simple
     container_name: clash-converter-backend
     restart: unless-stopped
     ports:
