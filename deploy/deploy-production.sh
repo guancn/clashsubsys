@@ -202,8 +202,16 @@ deploy_services() {
     # 复制生产环境配置
     cp .env.production .env
     
-    # 构建和启动服务
-    $COMPOSE_CMD -f docker-compose.production.yml up -d --build
+    # 清理 Docker 缓存，确保使用新的 Dockerfile
+    log_info "清理 Docker 构建缓存..."
+    docker builder prune -f || true
+    
+    # 强制重新构建和启动服务
+    log_info "强制重新构建镜像..."
+    $COMPOSE_CMD -f docker-compose.production.yml build --no-cache
+    
+    log_info "启动服务..."
+    $COMPOSE_CMD -f docker-compose.production.yml up -d
     
     log_success "服务部署完成"
 }
