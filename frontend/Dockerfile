@@ -27,25 +27,8 @@ COPY . .
 # 确保 dist 目录存在
 RUN mkdir -p dist
 
-# 尝试构建，如果失败则使用最小化的回退
-RUN npm run build 2>&1 && echo "Build successful" || (\
-    echo "Build failed, creating minimal dist..." && \
-    mkdir -p dist/assets/js dist/assets/css && \
-    echo '<!DOCTYPE html>' > dist/index.html && \
-    echo '<html lang="zh-CN">' >> dist/index.html && \
-    echo '<head>' >> dist/index.html && \
-    echo '  <meta charset="UTF-8">' >> dist/index.html && \
-    echo '  <meta name="viewport" content="width=device-width, initial-scale=1.0">' >> dist/index.html && \
-    echo '  <title>Clash 订阅转换服务</title>' >> dist/index.html && \
-    echo '</head>' >> dist/index.html && \
-    echo '<body>' >> dist/index.html && \
-    echo '  <div id="app">' >> dist/index.html && \
-    echo '    <h1>系统正在初始化...</h1>' >> dist/index.html && \
-    echo '    <p>请稍候片刻</p>' >> dist/index.html && \
-    echo '  </div>' >> dist/index.html && \
-    echo '</body>' >> dist/index.html && \
-    echo '</html>' >> dist/index.html \
-    )
+# 构建应用 - 必须成功
+RUN npm run build
 
 # 生产阶段
 FROM nginx:alpine

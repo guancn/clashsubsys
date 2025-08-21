@@ -6,8 +6,18 @@ import { resolve } from 'path'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   
+  // 从环境变量获取base路径，优先使用NODE_ENV中的设置
+  const base = process.env.VITE_APP_PREFIX || env.VITE_APP_PREFIX || '/'
+  
+  console.log('Vite build config:', { 
+    mode, 
+    base, 
+    VITE_APP_PREFIX: process.env.VITE_APP_PREFIX,
+    VITE_API_BASE_URL: process.env.VITE_API_BASE_URL 
+  })
+  
   return {
-    base: env.VITE_APP_PREFIX || '/',
+    base,
     plugins: [
       vue()
     ],
