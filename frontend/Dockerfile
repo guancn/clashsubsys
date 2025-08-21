@@ -19,7 +19,11 @@ ENV NODE_ENV=production
 COPY package.json package-lock.json* ./
 
 # 安装依赖（包含sass支持）
-RUN npm ci --silent || npm install --silent
+RUN if [ -f package-lock.json ]; then \
+        npm ci --no-audit --no-fund; \
+    else \
+        npm install --no-audit --no-fund; \
+    fi
 
 # 复制源代码
 COPY . .
@@ -27,8 +31,25 @@ COPY . .
 # 确保 dist 目录存在
 RUN mkdir -p dist
 
+# 调试信息
+RUN echo "=== Build Environment ===" && \
+    echo "Node version: $(node --version)" && \
+    echo "NPM version: $(npm --version)" && \
+    echo "Working directory: $(pwd)" && \
+    echo "Environment variables:" && \
+    printenv | grep VITE_ && \
+    echo "Package.json scripts:" && \
+    cat package.json | grep -A 10 '"scripts"' && \
+    echo "Node modules check:" && \
+    ls -la node_modules/.bin/vite || echo "Vite not found in node_modules" && \
+    echo "Vite executable check:" && \
+    which vite || echo "Vite command not in PATH" && \
+    echo "NPX check:" && \
+    npx vite --version || echo "NPX vite failed" && \
+    echo "========================="
+
 # 构建应用 - 必须成功
-RUN npm run build
+RUN npx vite build --mode production
 
 # 生产阶段
 FROM nginx:alpine
