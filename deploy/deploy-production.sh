@@ -29,11 +29,40 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# 根据当前用户决定是否使用 sudo
+run_cmd() {
+    if [[ "$IS_ROOT" == "true" ]]; then
+        "$@"
+    else
+        sudo "$@"
+    fi
+}
+
 # 检查是否为 root 用户
 check_root() {
     if [[ $EUID -eq 0 ]]; then
-        log_error "请不要使用 root 用户运行此脚本"
-        exit 1
+        # 如果使用了 --allow-root 参数，直接允许
+        if [[ "$ALLOW_ROOT" == "true" ]]; then
+            log_info "使用 --allow-root 参数，允许 root 用户运行"
+            export IS_ROOT=true
+            return
+        fi
+        
+        log_warning "检测到您正在使用 root 用户运行脚本"
+        log_warning "root 用户运行可能存在安全风险，建议使用普通用户"
+        
+        read -p "是否继续使用 root 用户运行? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            log_info "已取消运行，请使用普通用户重新执行"
+            log_info "或使用 --allow-root 参数强制允许: $0 --allow-root"
+            exit 0
+        fi
+        
+        log_info "继续使用 root 用户运行..."
+        export IS_ROOT=true
+    else
+        export IS_ROOT=false
     fi
 }
 
@@ -52,7 +81,7 @@ check_docker() {
     fi
     
     # 检查 Docker 服务状态
-    if ! sudo systemctl is-active --quiet docker; then
+    if ! run_cmd systemctl is-active --quiet docker; then
         log_error "Docker 服务未运行，请启动 Docker 服务"
         exit 1
     fi
@@ -108,7 +137,7 @@ backup_nginx_config() {
     
     if [ -f "$nginx_config" ]; then
         log_info "备份现有 Nginx 配置..."
-        sudo cp "$nginx_config" "${nginx_config}.backup.$(date +%Y%m%d_%H%M%S)"
+        run_cmd cp "$nginx_config" "${nginx_config}.backup.$(date +%Y%m%d_%H%M%S)"
         log_success "Nginx 配置已备份"
     else
         log_warning "未找到现有 Nginx 配置文件: $nginx_config"
@@ -128,14 +157,14 @@ update_nginx_config() {
     fi
     
     # 复制新配置
-    sudo cp "$new_config" "$nginx_config"
+    run_cmd cp "$new_config" "$nginx_config"
     
     # 测试 Nginx 配置
-    if sudo nginx -t; then
+    if run_cmd nginx -t; then
         log_success "Nginx 配置测试通过"
         
         # 重载 Nginx
-        sudo systemctl reload nginx
+        run_cmd systemctl reload nginx
         log_success "Nginx 配置已更新并重载"
     else
         log_error "Nginx 配置测试失败，正在恢复备份..."
@@ -143,8 +172,8 @@ update_nginx_config() {
         # 恢复备份
         local backup_file=$(ls ${nginx_config}.backup.* | tail -1)
         if [ -f "$backup_file" ]; then
-            sudo cp "$backup_file" "$nginx_config"
-            sudo systemctl reload nginx
+            run_cmd cp "$backup_file" "$nginx_config"
+            run_cmd systemctl reload nginx
             log_info "已恢复备份配置"
         fi
         
@@ -256,8 +285,45 @@ show_deployment_info() {
     echo
 }
 
+# 解析命令行参数
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --allow-root)
+                export ALLOW_ROOT=true
+                shift
+                ;;
+            --help|-h)
+                show_help
+                exit 0
+                ;;
+            *)
+                log_error "未知参数: $1"
+                show_help
+                exit 1
+                ;;
+        esac
+    done
+}
+
+# 显示帮助信息
+show_help() {
+    echo "用法: $0 [选项]"
+    echo
+    echo "选项:"
+    echo "  --allow-root    允许使用 root 用户运行脚本"
+    echo "  -h, --help      显示此帮助信息"
+    echo
+    echo "示例:"
+    echo "  $0                  # 普通部署（推荐）"
+    echo "  $0 --allow-root     # 允许 root 用户运行"
+}
+
 # 主函数
 main() {
+    # 解析命令行参数
+    parse_args "$@"
+    
     echo "========================================="
     echo "  Clash 订阅转换服务 - 生产环境部署"
     echo "  与现有系统共存部署方案"
