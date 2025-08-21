@@ -102,7 +102,7 @@ import {
   Share, 
   ChatDotRound,
   Connection,
-  Shield,
+  WarningFilled as Shield,
   Lightning
 } from '@element-plus/icons-vue'
 

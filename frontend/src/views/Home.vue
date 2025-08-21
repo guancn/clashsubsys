@@ -201,9 +201,9 @@ import {
   Connection, 
   InfoFilled, 
   Lightning, 
-  Shield, 
+  WarningFilled as Shield, 
   Tools, 
-  CloudUpload,
+  Upload as CloudUpload,
   Monitor,
   Setting
 } from '@element-plus/icons-vue'
