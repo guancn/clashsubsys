@@ -103,7 +103,7 @@ check_docker() {
     log_success "Docker 环境检查完成，使用命令: $COMPOSE_CMD"
 }
 
-# 检查端口占用
+# 检查端口占用（仅用于提示，不阻止部署）
 check_ports() {
     log_info "检查端口占用情况..."
     
@@ -117,12 +117,11 @@ check_ports() {
     done
     
     if [ ${#occupied_ports[@]} -ne 0 ]; then
-        log_error "以下端口被占用: ${occupied_ports[*]}"
-        log_info "请检查并释放这些端口，或修改 .env.production 文件中的端口配置"
-        exit 1
+        log_warning "以下端口被占用: ${occupied_ports[*]}"
+        log_info "将在部署过程中自动清理相关容器以释放端口"
+    else
+        log_success "端口检查完成，8001 和 3001 端口可用"
     fi
-    
-    log_success "端口检查完成，8001 和 3001 端口可用"
 }
 
 # 检查现有系统
@@ -215,6 +214,27 @@ cleanup_old_containers() {
             docker rm -f $container || true
         fi
     done
+    
+    # 等待端口释放
+    sleep 3
+    
+    # 验证端口是否已释放
+    local ports=(8001 3001)
+    local still_occupied=()
+    
+    for port in "${ports[@]}"; do
+        if ss -tlnp | grep -q ":${port} "; then
+            still_occupied+=($port)
+        fi
+    done
+    
+    if [ ${#still_occupied[@]} -ne 0 ]; then
+        log_error "清理后以下端口仍被占用: ${still_occupied[*]}"
+        log_error "请手动检查并释放这些端口后重试"
+        exit 1
+    fi
+    
+    log_success "所有端口已释放，可以继续部署"
 }
 
 # 构建和启动服务
