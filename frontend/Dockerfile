@@ -6,17 +6,8 @@ FROM node:18-alpine as builder
 # 设置工作目录
 WORKDIR /app
 
-# 安装 pnpm
-RUN npm install -g pnpm
-
 # 复制 package 文件
-COPY package.json pnpm-lock.yaml* ./
-
-# 安装依赖
-RUN pnpm install --frozen-lockfile
-
-# 复制源代码
-COPY . .
+COPY package.json package-lock.json* ./
 
 # 接收构建参数
 ARG VITE_API_BASE_URL=http://localhost:8000
@@ -26,8 +17,14 @@ ARG VITE_APP_PREFIX=/
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 ENV VITE_APP_PREFIX=$VITE_APP_PREFIX
 
+# 安装所有依赖（包括开发依赖，构建需要）
+RUN npm ci || npm install
+
+# 复制源代码
+COPY . .
+
 # 构建应用
-RUN pnpm run build
+RUN npm run build
 
 # 生产阶段
 FROM nginx:alpine
