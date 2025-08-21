@@ -275,25 +275,4 @@ async def clear_cache():
     return {"message": "缓存已清空"}
 
 
-# 错误处理
-@router.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=ErrorResponse(
-            error_code=f"HTTP_{exc.status_code}",
-            message=exc.detail
-        ).dict()
-    )
-
-
-@router.exception_handler(Exception)
-async def general_exception_handler(request: Request, exc: Exception):
-    return JSONResponse(
-        status_code=500,
-        content=ErrorResponse(
-            error_code="INTERNAL_ERROR",
-            message="服务器内部错误",
-            detail=str(exc)
-        ).dict()
-    )
+# 注意：异常处理器应该在main.py中注册到FastAPI应用上，而不是在路由器上
