@@ -57,8 +57,8 @@ FROM nginx:alpine
 # 安装必要工具
 RUN apk add --no-cache curl
 
-# 复制构建产物到 nginx
-COPY --from=builder /app/dist /usr/share/nginx/html
+# 复制构建产物到 nginx，创建clash目录结构
+COPY --from=builder /app/dist /usr/share/nginx/html/clash
 
 # 复制 nginx 配置
 COPY nginx.conf /etc/nginx/nginx.conf
