@@ -5,7 +5,8 @@
   "description": "Clash 订阅转换服务前端",
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build --mode production",
+    "build:prod": "NODE_ENV=production vite build --mode production",
     "dev": "vite --host 0.0.0.0 --port 3000",
     "preview": "vite preview",
     "lint": "eslint . --ext vue,js,jsx,cjs,mjs,ts,tsx,cts,mts --fix --ignore-path .gitignore",
