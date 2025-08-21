@@ -18,11 +18,11 @@ ENV NODE_ENV=production
 # 复制 package 文件
 COPY package.json package-lock.json* ./
 
-# 安装依赖（包含sass支持）
+# 安装依赖（包含开发依赖，构建需要）
 RUN if [ -f package-lock.json ]; then \
-        npm ci --no-audit --no-fund; \
+        npm ci --include=dev --no-audit --no-fund; \
     else \
-        npm install --no-audit --no-fund; \
+        npm install --include=dev --no-audit --no-fund; \
     fi
 
 # 复制源代码
