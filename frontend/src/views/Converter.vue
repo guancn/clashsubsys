@@ -55,7 +55,6 @@
                     </div>
                     <el-button
                       type="primary"
-                      plain
                       @click="converterStore.addUrl"
                       :disabled="converterStore.form.url.length >= 10"
                       class="add-url-btn"
@@ -694,7 +693,8 @@ onMounted(() => {
 <style lang="scss" scoped>
 .converter-container {
   min-height: 100vh;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background-attachment: fixed;
 }
 
 .container {
@@ -704,20 +704,28 @@ onMounted(() => {
 }
 
 .page-header {
-  background: white;
-  border-bottom: 1px solid #ebeef5;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
   padding: 40px 0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
   
   .page-title {
-    font-size: 2rem;
-    font-weight: 700;
-    color: #2c3e50;
-    margin-bottom: 8px;
+    font-size: 2.5rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 12px;
+    text-align: center;
   }
   
   .page-description {
-    color: #64748b;
-    font-size: 1.125rem;
+    color: #6b7280;
+    font-size: 1.2rem;
+    text-align: center;
+    font-weight: 500;
   }
 }
 
@@ -734,12 +742,18 @@ onMounted(() => {
 
 .form-section {
   .converter-card {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    border-radius: 16px;
+    
     .card-header {
       display: flex;
       align-items: center;
       gap: 8px;
       font-weight: 600;
-      color: #409eff;
+      color: #667eea;
     }
   }
   
@@ -750,6 +764,24 @@ onMounted(() => {
     
     .add-url-btn {
       width: 100%;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border: none;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+      font-weight: 600;
+      
+      &:hover {
+        background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+        box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+        transform: translateY(-2px);
+      }
+      
+      &:disabled {
+        background: #e5e7eb;
+        color: #9ca3af;
+        box-shadow: none;
+        transform: none;
+      }
     }
   }
   
@@ -814,6 +846,19 @@ onMounted(() => {
     .convert-btn {
       flex: 1;
       min-width: 140px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border: none;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+      font-weight: 600;
+      height: 48px;
+      font-size: 16px;
+      
+      &:hover {
+        background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+        box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+        transform: translateY(-2px);
+      }
     }
   }
 }
@@ -826,11 +871,18 @@ onMounted(() => {
   .result-card,
   .history-card,
   .tips-card {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    border-radius: 16px;
+    
     .card-header {
       display: flex;
       align-items: center;
       gap: 8px;
       font-weight: 600;
+      color: #667eea;
       
       .clear-history-btn {
         margin-left: auto;

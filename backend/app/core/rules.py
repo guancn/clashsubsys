@@ -124,23 +124,24 @@ class RuleProcessor:
             return None
     
     def _is_ini_format(self, content: str) -> bool:
-        """检查内容是否为 INI 格式"""
-        return '[' in content and ']' in content and '=' in content
+        """检查内容是否为 INI 格式或自定义格式"""
+        # 检查是否包含自定义代理组或规则集配置
+        return ('custom_proxy_group' in content or 
+                'ruleset' in content or 
+                'enable_rule_generator' in content or
+                ('[' in content and ']' in content and '=' in content))
     
     def _parse_ini_config(self, content: str) -> Dict[str, Any]:
         """
-        解析 INI 格式的配置文件
+        解析配置文件（支持INI格式和自定义格式）
         
         Args:
-            content: INI 配置内容
+            content: 配置内容
             
         Returns:
             解析后的配置字典
         """
         try:
-            config = ConfigParser()
-            config.read_string(content)
-            
             result = {
                 'custom_proxy_group': [],
                 'ruleset': [],
@@ -148,30 +149,65 @@ class RuleProcessor:
                 'template': {},
             }
             
-            # 解析 custom_proxy_group 部分
-            if config.has_section('custom_proxy_group'):
-                for key, value in config.items('custom_proxy_group'):
-                    result['custom_proxy_group'].append(value)
+            # 首先尝试按行解析自定义格式
+            lines = content.strip().split('\n')
             
-            # 解析 ruleset 部分
-            if config.has_section('ruleset'):
-                for key, value in config.items('ruleset'):
-                    result['ruleset'].append(value)
+            for line in lines:
+                line = line.strip()
+                
+                # 跳过注释和空行
+                if not line or line.startswith('#') or line.startswith(';'):
+                    continue
+                
+                # 解析 ruleset 行
+                if line.startswith('ruleset='):
+                    ruleset_config = line[8:]  # 移除 "ruleset=" 前缀
+                    result['ruleset'].append(ruleset_config)
+                
+                # 解析 custom_proxy_group 行
+                elif line.startswith('custom_proxy_group='):
+                    group_config = line[19:]  # 移除 "custom_proxy_group=" 前缀
+                    result['custom_proxy_group'].append(group_config)
+                
+                # 解析其他配置项（作为模板配置）
+                elif '=' in line and not line.startswith('['):
+                    key, value = line.split('=', 1)
+                    result['template'][key.strip()] = value.strip()
             
-            # 解析 template 部分
-            if config.has_section('template'):
-                for key, value in config.items('template'):
-                    result['template'][key] = value
+            # 如果自定义格式解析失败，尝试标准INI格式
+            if not result['ruleset'] and not result['custom_proxy_group']:
+                try:
+                    config = ConfigParser()
+                    config.read_string(content)
+                    
+                    # 解析 custom_proxy_group 部分
+                    if config.has_section('custom_proxy_group'):
+                        for key, value in config.items('custom_proxy_group'):
+                            result['custom_proxy_group'].append(value)
+                    
+                    # 解析 ruleset 部分
+                    if config.has_section('ruleset'):
+                        for key, value in config.items('ruleset'):
+                            result['ruleset'].append(value)
+                    
+                    # 解析 template 部分
+                    if config.has_section('template'):
+                        for key, value in config.items('template'):
+                            result['template'][key] = value
+                    
+                    # 解析节点重命名规则
+                    if config.has_section('rename_node'):
+                        for key, value in config.items('rename_node'):
+                            result['rename'].append(f"{key},{value}")
+                
+                except Exception as ini_error:
+                    logger.warning(f"Standard INI parsing also failed: {ini_error}")
             
-            # 解析节点重命名规则
-            if config.has_section('rename_node'):
-                for key, value in config.items('rename_node'):
-                    result['rename'].append(f"{key},{value}")
-            
+            logger.info(f"Parsed remote config: {len(result['ruleset'])} rulesets, {len(result['custom_proxy_group'])} proxy groups")
             return result
             
         except Exception as e:
-            logger.error(f"Failed to parse INI config: {e}")
+            logger.error(f"Failed to parse config: {e}")
             return {}
     
     def generate_proxy_groups(self, 
