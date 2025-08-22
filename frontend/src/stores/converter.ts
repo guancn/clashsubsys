@@ -24,10 +24,9 @@ export const useConverterStore = defineStore('converter', {
       url: [''],
       target: 'clash',
       remote_config: '',
-      custom_rules: [],
       include: '',
       exclude: '',
-      rename: '',
+      filename: '',
       emoji: true,
       udp: true,
       tfo: false,
@@ -137,17 +136,6 @@ export const useConverterStore = defineStore('converter', {
       }
     },
 
-    // 添加自定义规则
-    addCustomRule(rule: string) {
-      if (rule.trim() && !this.form.custom_rules.includes(rule.trim())) {
-        this.form.custom_rules.push(rule.trim())
-      }
-    },
-
-    // 删除自定义规则
-    removeCustomRule(index: number) {
-      this.form.custom_rules.splice(index, 1)
-    },
 
     // 设置转换状态
     setConverting(status: boolean) {
@@ -203,10 +191,9 @@ export const useConverterStore = defineStore('converter', {
         url: [''],
         target: 'clash',
         remote_config: '',
-        custom_rules: [],
         include: '',
         exclude: '',
-        rename: '',
+        filename: '',
         emoji: true,
         udp: true,
         tfo: false,

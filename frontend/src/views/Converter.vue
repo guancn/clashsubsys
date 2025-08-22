@@ -117,16 +117,6 @@
                       </div>
                     </el-form-item>
 
-                    <el-form-item label="重命名规则">
-                      <el-input
-                        v-model="converterStore.form.rename"
-                        placeholder="支持正则替换，如: Test,HK"
-                        clearable
-                      />
-                      <div class="form-tip">
-                        使用正则表达式重命名节点
-                      </div>
-                    </el-form-item>
                   </el-collapse-item>
                 </el-collapse>
 
@@ -168,39 +158,18 @@
                   </el-collapse-item>
                 </el-collapse>
 
-                <!-- 自定义规则 -->
-                <el-collapse accordion class="rules-collapse">
-                  <el-collapse-item name="rules" title="自定义规则">
-                    <div class="custom-rules">
-                      <el-tag
-                        v-for="(rule, index) in converterStore.form.custom_rules"
-                        :key="index"
-                        closable
-                        @close="converterStore.removeCustomRule(index)"
-                        class="rule-tag"
-                      >
-                        {{ rule }}
-                      </el-tag>
-                      <el-input
-                        v-if="showRuleInput"
-                        ref="ruleInputRef"
-                        v-model="newRule"
-                        size="small"
-                        @blur="handleAddRule"
-                        @keyup.enter="handleAddRule"
-                        class="rule-input"
-                      />
-                      <el-button
-                        v-else
-                        size="small"
-                        @click="showAddRule"
-                        class="add-rule-btn"
-                      >
-                        + 添加规则
-                      </el-button>
-                    </div>
-                  </el-collapse-item>
-                </el-collapse>
+                <!-- 配置文件名 -->
+                <el-form-item label="配置文件名">
+                  <el-input
+                    v-model="converterStore.form.filename"
+                    placeholder="请输入文件名，如: tt (将生成 tt.yml)"
+                    clearable
+                    :prefix-icon="Document"
+                  />
+                  <div class="form-tip">
+                    自定义生成的YAML配置文件名称，不填写将使用默认名称
+                  </div>
+                </el-form-item>
 
                 <!-- 预设配置 -->
                 <el-form-item label="预设配置">
@@ -461,9 +430,6 @@ const converterStore = useConverterStore()
 // 响应式数据
 const downloading = ref(false)
 const selectedPreset = ref<number | null>(null)
-const showRuleInput = ref(false)
-const newRule = ref('')
-const ruleInputRef = ref()
 const showPreviewDialog = ref(false)
 const previewTab = ref('yaml')
 const previewContent = ref('')
@@ -533,21 +499,6 @@ const applyPreset = (index: number) => {
   }
 }
 
-// 添加自定义规则
-const showAddRule = () => {
-  showRuleInput.value = true
-  nextTick(() => {
-    ruleInputRef.value?.focus()
-  })
-}
-
-const handleAddRule = () => {
-  if (newRule.value.trim()) {
-    converterStore.addCustomRule(newRule.value.trim())
-    newRule.value = ''
-  }
-  showRuleInput.value = false
-}
 
 // 下载配置
 const downloadConfig = async () => {
@@ -809,21 +760,6 @@ onMounted(() => {
     gap: 16px;
   }
   
-  .custom-rules {
-    .rule-tag {
-      margin: 4px 8px 4px 0;
-    }
-    
-    .rule-input {
-      width: 120px;
-      margin: 4px 8px 4px 0;
-    }
-    
-    .add-rule-btn {
-      margin: 4px 8px 4px 0;
-      border-style: dashed;
-    }
-  }
   
   .preset-option {
     .preset-name {

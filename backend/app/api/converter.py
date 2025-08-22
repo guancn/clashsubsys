@@ -50,7 +50,8 @@ async def convert_subscription(request: ConversionRequest):
             conversion_cache[config_id] = {
                 'config': result.config,
                 'timestamp': datetime.now(),
-                'nodes_count': result.nodes_count
+                'nodes_count': result.nodes_count,
+                'filename': request.filename  # 存储用户自定义文件名
             }
             
             # 生成下载链接（考虑nginx路径前缀）
@@ -69,7 +70,7 @@ async def convert_subscription_get(
     remote_config: Optional[str] = Query(None, description="远程配置规则地址"),
     include: Optional[str] = Query(None, description="节点包含过滤规则（正则）"),
     exclude: Optional[str] = Query(None, description="节点排除过滤规则（正则）"),
-    rename: Optional[str] = Query(None, description="节点重命名规则"),
+    filename: Optional[str] = Query(None, description="自定义配置文件名"),
     emoji: bool = Query(True, description="是否添加 Emoji"),
     udp: bool = Query(True, description="是否启用 UDP"),
     tfo: bool = Query(False, description="是否启用 TCP Fast Open"),
@@ -93,7 +94,7 @@ async def convert_subscription_get(
             remote_config=remote_config,
             include=include,
             exclude=exclude,
-            rename=rename,
+            filename=filename,
             emoji=emoji,
             udp=udp,
             tfo=tfo,
@@ -143,11 +144,20 @@ async def download_config(
         media_type="text/plain; charset=utf-8"
     )
     
-    # 设置下载文件名
+    # 设置下载文件名，优先使用缓存中的文件名
     if filename:
+        # 查询参数中提供的文件名
         safe_filename = sanitize_filename(filename)
+        if not safe_filename.endswith(('.yaml', '.yml')):
+            safe_filename += '.yml'
+    elif cached_data.get('filename'):
+        # 使用缓存中存储的用户自定义文件名
+        safe_filename = sanitize_filename(cached_data['filename'])
+        if not safe_filename.endswith(('.yaml', '.yml')):
+            safe_filename += '.yml'
     else:
-        safe_filename = f"clash_config_{config_id}.yaml"
+        # 使用默认文件名
+        safe_filename = f"clash_config_{config_id}.yml"
     
     response.headers["Content-Disposition"] = f'attachment; filename="{safe_filename}"'
     

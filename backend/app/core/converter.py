@@ -140,18 +140,9 @@ class SubscriptionConverter:
     
     def _apply_node_rename(self, nodes: List[ProxyNode], request: ConversionRequest) -> List[ProxyNode]:
         """应用节点重命名"""
-        node_names = [node.name for node in nodes]
-        
-        # 应用重命名规则
-        rename_rules = []
-        if request.rename:
-            rename_rules = [request.rename]
-        
-        rename_map = self.rule_processor.apply_node_rename(node_names, rename_rules)
-        
-        # 应用重命名
+        # 不再应用重命名规则，只添加 Emoji（如果启用）
         for node in nodes:
-            new_name = rename_map.get(node.name, node.name)
+            new_name = node.name
             
             # 添加 Emoji（如果启用）
             if request.emoji:
@@ -197,7 +188,7 @@ class SubscriptionConverter:
             
             # 生成规则和rule-providers
             custom_rulesets = remote_config.get('ruleset', []) if remote_config else None
-            rules, rule_providers = self.rule_processor.generate_rules(custom_rulesets, request.custom_rules)
+            rules, rule_providers = self.rule_processor.generate_rules(custom_rulesets, [])
             
             # 确保有有效的代理节点
             if not clash_proxies:

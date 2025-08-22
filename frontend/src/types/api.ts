@@ -10,10 +10,9 @@ export interface ConversionRequest {
   url: string[]
   target: TargetFormat
   remote_config?: string
-  custom_rules?: string[]
   include?: string
   exclude?: string
-  rename?: string
+  filename?: string
   emoji: boolean
   udp: boolean
   tfo: boolean
