@@ -75,21 +75,67 @@ class RuleProcessor:
         ]
         
         self.default_rules = [
-            "RULE-SET,applications,DIRECT",
+            # 管理界面直连
             "DOMAIN,clash.razord.top,DIRECT",
             "DOMAIN,yacd.haishan.me,DIRECT",
-            "RULE-SET,private,DIRECT",
-            "RULE-SET,reject,🛑 广告拦截",
-            "RULE-SET,icloud,🍃 应用净化",
-            "RULE-SET,apple,🎯 全球直连",
-            "RULE-SET,google,🚀 节点选择",
-            "RULE-SET,proxy,🚀 节点选择",
-            "RULE-SET,direct,🎯 全球直连",
-            "RULE-SET,lancidr,DIRECT",
-            "RULE-SET,cncidr,🎯 全球直连",
-            "RULE-SET,telegramcidr,📲 电报消息",
+            
+            # 局域网直连
+            "IP-CIDR,192.168.0.0/16,DIRECT",
+            "IP-CIDR,10.0.0.0/8,DIRECT", 
+            "IP-CIDR,172.16.0.0/12,DIRECT",
+            "IP-CIDR,127.0.0.0/8,DIRECT",
+            "IP-CIDR,100.64.0.0/10,DIRECT",
+            "IP-CIDR,224.0.0.0/4,DIRECT",
+            "IP-CIDR6,fe80::/10,DIRECT",
+            
+            # Apple 服务直连
+            "DOMAIN-SUFFIX,apple.com,🎯 全球直连",
+            "DOMAIN-SUFFIX,icloud.com,🎯 全球直连",
+            "DOMAIN-SUFFIX,apple-cloudkit.com,🎯 全球直连",
+            "DOMAIN-SUFFIX,crashlytics.com,🎯 全球直连",
+            
+            # 常见直连服务
+            "DOMAIN-SUFFIX,qq.com,🎯 全球直连",
+            "DOMAIN-SUFFIX,taobao.com,🎯 全球直连",
+            "DOMAIN-SUFFIX,tmall.com,🎯 全球直连",
+            "DOMAIN-SUFFIX,alipay.com,🎯 全球直连",
+            "DOMAIN-SUFFIX,baidu.com,🎯 全球直连",
+            "DOMAIN-SUFFIX,163.com,🎯 全球直连",
+            "DOMAIN-SUFFIX,126.com,🎯 全球直连",
+            "DOMAIN-SUFFIX,weibo.com,🎯 全球直连",
+            "DOMAIN-SUFFIX,sina.com.cn,🎯 全球直连",
+            "DOMAIN-SUFFIX,douban.com,🎯 全球直连",
+            "DOMAIN-SUFFIX,zhihu.com,🎯 全球直连",
+            "DOMAIN-SUFFIX,bilibili.com,🎯 全球直连",
+            
+            # Telegram
+            "DOMAIN-SUFFIX,t.me,📲 电报消息",
+            "DOMAIN-SUFFIX,tdesktop.com,📲 电报消息", 
+            "DOMAIN-SUFFIX,telegra.ph,📲 电报消息",
+            "DOMAIN-SUFFIX,telegram.org,📲 电报消息",
+            "IP-CIDR,91.108.4.0/22,📲 电报消息",
+            "IP-CIDR,91.108.8.0/22,📲 电报消息",
+            "IP-CIDR,91.108.12.0/22,📲 电报消息",
+            "IP-CIDR,91.108.16.0/22,📲 电报消息",
+            "IP-CIDR,91.108.56.0/22,📲 电报消息",
+            "IP-CIDR,149.154.160.0/20,📲 电报消息",
+            
+            # 常见代理服务
+            "DOMAIN-SUFFIX,google.com,🚀 节点选择",
+            "DOMAIN-SUFFIX,youtube.com,🚀 节点选择",
+            "DOMAIN-SUFFIX,facebook.com,🚀 节点选择",
+            "DOMAIN-SUFFIX,twitter.com,🚀 节点选择",
+            "DOMAIN-SUFFIX,instagram.com,🚀 节点选择",
+            "DOMAIN-SUFFIX,github.com,🚀 节点选择",
+            "DOMAIN-SUFFIX,netflix.com,🚀 节点选择",
+            "DOMAIN-SUFFIX,openai.com,🚀 节点选择",
+            "DOMAIN-SUFFIX,chatgpt.com,🚀 节点选择",
+            
+            # 地理位置规则
             "GEOIP,LAN,DIRECT",
             "GEOIP,CN,🎯 全球直连",
+            
+            # 最终匹配
             "MATCH,🐟 漏网之鱼"
         ]
     
@@ -377,11 +423,13 @@ class RuleProcessor:
                 rule_content = parts[1]
                 policy = parts[2] if len(parts) > 2 else "PROXY"
                 
-                # 如果是 URL，提取规则名
-                if rule_content.startswith('http'):
-                    rule_name = rule_content.split('/')[-1].replace('.list', '').replace('.txt', '')
-                    return f"RULE-SET,{rule_name},{policy}"
+                # 处理不同类型的规则
+                if rule_type == "RULE-SET":
+                    # 对于RULE-SET类型，我们暂时跳过，因为需要额外的rule-providers配置
+                    logger.info(f"Skipping RULE-SET rule: {ruleset_config} (rule-providers not implemented)")
+                    return None
                 else:
+                    # 处理其他类型的规则 (DOMAIN, DOMAIN-SUFFIX, IP-CIDR等)
                     return f"{rule_type},{rule_content},{policy}"
             
             return None
