@@ -321,31 +321,69 @@ class RuleProcessor:
             # 解析代理列表部分
             proxies_part = parts[2]
             url = parts[3] if len(parts) > 3 else "http://www.gstatic.com/generate_204"
-            interval = int(parts[4]) if len(parts) > 4 and parts[4].isdigit() else 300
+            
+            # 解析第4部分，格式可能是 "300,,50" 
+            if len(parts) > 4:
+                interval_tolerance_part = parts[4]
+                # 按逗号分割，可能有多个逗号
+                interval_parts = interval_tolerance_part.split(',')
+                
+                # 第一个是interval
+                interval = int(interval_parts[0]) if interval_parts[0].isdigit() else 300
+                
+                # 最后一个非空部分是tolerance
+                tolerance = 50
+                for part in reversed(interval_parts):
+                    if part.strip() and part.strip().isdigit():
+                        tolerance = int(part.strip())
+                        break
+            else:
+                interval = 300
+                tolerance = 50
             
             # 解析代理
             proxies = []
             
-            # 按 [] 分割
-            proxy_items = re.findall(r'\[(.*?)\]', proxies_part)
-            
-            for item in proxy_items:
-                if item == 'DIRECT' or item == 'REJECT':
-                    proxies.append(item)
-                elif item.startswith('[]'):
-                    # 引用其他组
-                    proxies.append(item[2:])
-                else:
-                    # 节点过滤规则
-                    if '.*' in item or item.startswith('^') or item.endswith('$'):
-                        # 正则表达式过滤
-                        pattern = re.compile(item)
-                        filtered_nodes = [node for node in nodes if pattern.search(node)]
-                        proxies.extend(filtered_nodes)
+            # 检查是否为地区匹配格式（以点开头和结尾）
+            if proxies_part.startswith('.') and proxies_part.endswith('.'):
+                # 地区匹配格式，如 .香港|HK.
+                pattern_str = proxies_part[1:-1]  # 移除首尾的点
+                try:
+                    pattern = re.compile(pattern_str, re.IGNORECASE)
+                    filtered_nodes = [node for node in nodes if pattern.search(node)]
+                    proxies.extend(filtered_nodes)
+                    logger.info(f"Regional group {name} matched {len(filtered_nodes)} nodes with pattern: {pattern_str}")
+                except re.error as e:
+                    logger.warning(f"Invalid regex pattern {proxies_part}: {e}")
+                    # 如果正则失败，尝试简单的字符串匹配
+                    keywords = pattern_str.split('|')
+                    for node in nodes:
+                        if any(keyword in node for keyword in keywords):
+                            proxies.append(node)
+            else:
+                # 按 [] 分割的传统格式
+                proxy_items = re.findall(r'\[(.*?)\]', proxies_part)
+                
+                for item in proxy_items:
+                    if item == 'DIRECT' or item == 'REJECT':
+                        proxies.append(item)
+                    elif item.startswith('[]'):
+                        # 引用其他组
+                        proxies.append(item[2:])
                     else:
-                        # 直接添加
-                        if item in nodes:
-                            proxies.append(item)
+                        # 节点过滤规则
+                        if '.*' in item or item.startswith('^') or item.endswith('$'):
+                            # 正则表达式过滤
+                            try:
+                                pattern = re.compile(item, re.IGNORECASE)
+                                filtered_nodes = [node for node in nodes if pattern.search(node)]
+                                proxies.extend(filtered_nodes)
+                            except re.error as e:
+                                logger.warning(f"Invalid regex pattern {item}: {e}")
+                        else:
+                            # 直接添加
+                            if item in nodes:
+                                proxies.append(item)
             
             # 如果没有找到节点，添加所有节点
             if not proxies and group_type in ['url-test', 'fallback', 'load-balance']:
@@ -363,7 +401,7 @@ class RuleProcessor:
                 group['interval'] = interval
                 
                 if group_type == 'url-test':
-                    group['tolerance'] = 50
+                    group['tolerance'] = tolerance
                 elif group_type == 'load-balance':
                     group['strategy'] = 'consistent-hashing'
             
