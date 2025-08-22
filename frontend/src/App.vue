@@ -19,10 +19,13 @@
 </template>
 
 <script setup lang="ts">
-import { provide } from 'vue'
+import { provide, computed, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElNotification, ElMessageBox } from 'element-plus'
 import { useAppStore } from '@/stores/app'
 
 const appStore = useAppStore()
+const router = useRouter()
 
 // 全局加载状态
 const globalLoading = computed(() => appStore.globalLoading)
