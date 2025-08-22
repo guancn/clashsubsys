@@ -53,8 +53,8 @@ async def convert_subscription(request: ConversionRequest):
                 'nodes_count': result.nodes_count
             }
             
-            # 生成下载链接
-            result.download_url = f"/api/sub/{config_id}"
+            # 生成下载链接（考虑nginx路径前缀）
+            result.download_url = f"/clash/api/sub/{config_id}"
         
         return result
         
@@ -171,7 +171,7 @@ async def get_config_info(config_id: str):
         "config_id": config_id,
         "nodes_count": cached_data['nodes_count'],
         "created_at": cached_data['timestamp'].isoformat(),
-        "download_url": f"/api/sub/{config_id}"
+        "download_url": f"/clash/api/sub/{config_id}"
     }
 
 
