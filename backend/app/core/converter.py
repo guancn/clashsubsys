@@ -171,11 +171,25 @@ class SubscriptionConverter:
             clash_proxies = []
             node_names = []
             
-            for node in nodes:
-                clash_proxy = self._convert_node_to_clash(node, request)
-                if clash_proxy:
-                    clash_proxies.append(clash_proxy)
-                    node_names.append(node.name)
+            for i, node in enumerate(nodes):
+                try:
+                    clash_proxy = self._convert_node_to_clash(node, request)
+                    if clash_proxy:
+                        # 验证必需字段
+                        required_fields = ['name', 'type', 'server', 'port']
+                        missing_fields = [field for field in required_fields if field not in clash_proxy or not clash_proxy[field]]
+                        
+                        if missing_fields:
+                            logger.warning(f"Node {i} ({node.name}) missing required fields: {missing_fields}")
+                            continue
+                            
+                        clash_proxies.append(clash_proxy)
+                        node_names.append(node.name)
+                        logger.debug(f"Successfully converted node {i}: {node.name} ({node.type})")
+                    else:
+                        logger.warning(f"Failed to convert node {i}: {node.name} ({node.type})")
+                except Exception as e:
+                    logger.error(f"Error converting node {i} ({node.name}): {e}")
             
             # 生成代理组
             custom_groups = remote_config.get('custom_proxy_group', []) if remote_config else None
@@ -184,6 +198,23 @@ class SubscriptionConverter:
             # 生成规则
             custom_rulesets = remote_config.get('ruleset', []) if remote_config else None
             rules = self.rule_processor.generate_rules(custom_rulesets, request.custom_rules)
+            
+            # 确保有有效的代理节点
+            if not clash_proxies:
+                logger.error("No valid proxy nodes found after conversion")
+                raise ValueError("没有有效的代理节点")
+            
+            # 确保有代理组
+            if not proxy_groups:
+                logger.warning("No proxy groups generated, using default groups")
+                proxy_groups = self.rule_processor.default_groups
+                
+            # 确保有规则
+            if not rules:
+                logger.warning("No rules generated, using default rules")
+                rules = self.rule_processor.default_rules
+            
+            logger.info(f"Generated config: {len(clash_proxies)} proxies, {len(proxy_groups)} groups, {len(rules)} rules")
             
             # 构建完整配置
             clash_config = {
@@ -245,11 +276,16 @@ class SubscriptionConverter:
     def _convert_node_to_clash(self, node: ProxyNode, request: ConversionRequest) -> Optional[Dict[str, Any]]:
         """将节点转换为 Clash 格式"""
         try:
+            # 验证节点基本信息
+            if not node.name or not node.type or not node.server or not node.port:
+                logger.warning(f"Node has missing basic info: name={node.name}, type={node.type}, server={node.server}, port={node.port}")
+                return None
+                
             base_config = {
                 'name': node.name,
-                'type': node.type,
+                'type': node.type.value if hasattr(node.type, 'value') else str(node.type),
                 'server': node.server,
-                'port': node.port,
+                'port': int(node.port),
             }
             
             # 根据协议类型添加特定配置
