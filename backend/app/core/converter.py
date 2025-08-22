@@ -195,9 +195,9 @@ class SubscriptionConverter:
             custom_groups = remote_config.get('custom_proxy_group', []) if remote_config else None
             proxy_groups = self.rule_processor.generate_proxy_groups(node_names, custom_groups)
             
-            # 生成规则
+            # 生成规则和rule-providers
             custom_rulesets = remote_config.get('ruleset', []) if remote_config else None
-            rules = self.rule_processor.generate_rules(custom_rulesets, request.custom_rules)
+            rules, rule_providers = self.rule_processor.generate_rules(custom_rulesets, request.custom_rules)
             
             # 确保有有效的代理节点
             if not clash_proxies:
@@ -246,6 +246,10 @@ class SubscriptionConverter:
                 'proxy-groups': proxy_groups,
                 'rules': rules
             }
+            
+            # 添加rule-providers配置（如果有）
+            if rule_providers:
+                clash_config['rule-providers'] = rule_providers
             
             # 添加模板配置
             if remote_config and 'template' in remote_config:

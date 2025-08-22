@@ -375,26 +375,46 @@ class RuleProcessor:
     
     def generate_rules(self, 
                       custom_rulesets: Optional[List[str]] = None,
-                      custom_rules: Optional[List[str]] = None) -> List[str]:
+                      custom_rules: Optional[List[str]] = None) -> tuple[List[str], Dict[str, Any]]:
         """
-        生成规则列表
+        生成规则列表和rule-providers配置
         
         Args:
             custom_rulesets: 自定义规则集配置
             custom_rules: 自定义规则列表
             
         Returns:
-            规则列表
+            (规则列表, rule-providers配置字典)
         """
         try:
             rules = []
+            rule_providers = {}
             
             # 处理自定义规则集
             if custom_rulesets:
                 for ruleset_config in custom_rulesets:
-                    rule = self._parse_custom_ruleset(ruleset_config)
-                    if rule:
-                        rules.append(rule)
+                    parsed_rule = self._parse_custom_ruleset(ruleset_config)
+                    if parsed_rule:
+                        if parsed_rule.get('rule') == 'MATCH':
+                            # 处理FINAL规则
+                            rules.append(f"MATCH,{parsed_rule['policy']}")
+                        elif parsed_rule.get('url'):
+                            # 处理RULE-SET规则
+                            rule_name = parsed_rule['name']
+                            rule_url = parsed_rule['url']
+                            policy = parsed_rule['policy']
+                            
+                            # 添加到rule-providers
+                            rule_providers[rule_name] = {
+                                "type": "http",
+                                "behavior": "domain" if "domain" in rule_name.lower() else "ipcidr" if "ip" in rule_name.lower() else "classical",
+                                "url": rule_url,
+                                "path": f"./{rule_name}.yaml",
+                                "interval": 86400
+                            }
+                            
+                            # 添加规则
+                            rules.append(f"RULE-SET,{rule_name},{policy}")
             
             # 添加自定义规则
             if custom_rules:
@@ -404,34 +424,41 @@ class RuleProcessor:
             if not rules:
                 rules = self.default_rules[:]
             
-            return rules
+            logger.info(f"Generated {len(rules)} rules and {len(rule_providers)} rule providers")
+            return rules, rule_providers
             
         except Exception as e:
             logger.error(f"Failed to generate rules: {e}")
-            return self.default_rules
+            return self.default_rules, {}
     
-    def _parse_custom_ruleset(self, ruleset_config: str) -> Optional[str]:
+    def _parse_custom_ruleset(self, ruleset_config: str) -> Optional[Dict[str, str]]:
         """
         解析自定义规则集配置
         
-        格式: RULE-SET,https://raw.githubusercontent.com/...,PROXY
+        格式: 策略组,https://raw.githubusercontent.com/...,规则名称
+        返回: {"policy": "策略组", "url": "规则URL", "name": "规则名称"}
         """
         try:
-            parts = ruleset_config.split(',', 2)
-            if len(parts) >= 2:
-                rule_type = parts[0]
-                rule_content = parts[1]
-                policy = parts[2] if len(parts) > 2 else "PROXY"
+            # 解析格式：策略组,URL
+            parts = ruleset_config.split(',', 1)
+            if len(parts) == 2:
+                policy = parts[0].strip()
+                url = parts[1].strip()
                 
-                # 处理不同类型的规则
-                if rule_type == "RULE-SET":
-                    # 对于RULE-SET类型，我们暂时跳过，因为需要额外的rule-providers配置
-                    logger.info(f"Skipping RULE-SET rule: {ruleset_config} (rule-providers not implemented)")
-                    return None
-                else:
-                    # 处理其他类型的规则 (DOMAIN, DOMAIN-SUFFIX, IP-CIDR等)
-                    return f"{rule_type},{rule_content},{policy}"
-            
+                # 处理特殊规则
+                if url == "[]FINAL":
+                    return {"policy": policy, "rule": "MATCH", "name": "FINAL"}
+                
+                # 从URL生成规则名称
+                if url.startswith('http'):
+                    rule_name = url.split('/')[-1].replace('.list', '').replace('.txt', '').replace('.yaml', '')
+                    return {
+                        "policy": policy,
+                        "url": url,
+                        "name": rule_name,
+                        "rule": f"RULE-SET,{rule_name}"
+                    }
+                
             return None
             
         except Exception as e:
