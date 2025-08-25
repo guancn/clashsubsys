@@ -1,52 +1,417 @@
+# 生产环境安全加固的 Docker Compose 配置
+# 企业级安全、性能和监控配置
+
 version: '3.8'
 
+# 生产环境安全模板
+x-production-security: &production-security
+  security_opt:
+    - no-new-privileges:true
+    - apparmor=docker-default
+  cap_drop:
+    - ALL
+  read_only: true
+
+x-production-logging: &production-logging
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "50m"
+      max-file: "5"
+      compress: "true"
+      
+x-production-healthcheck: &production-healthcheck
+  interval: 20s
+  timeout: 5s
+  start_period: 30s
+  retries: 5
+
+x-production-restart: &production-restart
+  restart_policy:
+    condition: on-failure
+    delay: 10s
+    max_attempts: 5
+    window: 300s
+
 services:
-  # Clash 转换器后端服务
+  # Clash 转换器后端服务 - 生产配置
   clash-backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: clash-converter-backend
+      target: runtime
+    container_name: clash-converter-backend-prod
     restart: unless-stopped
+    
+    # 网络配置
     ports:
-      # 使用不同端口，避免与现有系统冲突
-      - "127.0.0.1:8001:8000"
+      - "127.0.0.1:8001:8000"  # 仅本地监听
+    networks:
+      - clash-network
+      - monitoring  # 添加监控网络
+    
+    # 环境变量
     environment:
       - PYTHONPATH=/app
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
       - APP_PREFIX=/clash/api
+      - LOG_LEVEL=INFO
+      - WORKERS=2
+      - MAX_REQUESTS=1000
+      - MAX_REQUESTS_JITTER=50
+    
+    # 数据卷
     volumes:
       - ./backend/config.production.yaml:/app/config.yaml:ro
       - ./backend/logs:/app/logs
       - /etc/localtime:/etc/localtime:ro
-    networks:
-      - clash-network
+      - /etc/timezone:/etc/timezone:ro
+    
+    # 生产级资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+          pids: 100
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      <<: *production-restart
+    
+    # 生产级安全配置
+    <<: *production-security
+    cap_add:
+      - NET_BIND_SERVICE
+    tmpfs:
+      - /tmp:noexec,nosuid,nodev,size=200m
+      - /app/temp:noexec,nosuid,nodev,size=100m
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+      nproc: 65536
+    
+    # 生产级健康检查
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      <<: *production-healthcheck
+    
+    # 生产级日志
+    <<: *production-logging
+    
+    # 标签和元数据
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.clash-backend.rule=Host(`sub.guancn.me`) && PathPrefix(`/clash/api`)"
+      - "traefik.http.routers.clash-backend.tls=true"
+      - "traefik.http.services.clash-backend.loadbalancer.server.port=8000"
+      - "com.docker.compose.service=clash-backend"
+      - "com.docker.compose.project=clash-converter-prod"
 
-  # Clash 转换器前端服务  
+  # Clash 转换器前端服务 - 生产配置  
   clash-frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      target: runtime
       args:
         - VITE_API_BASE_URL=https://sub.guancn.me/clash/api
         - VITE_APP_PREFIX=/clash
-    container_name: clash-converter-frontend
+        - NODE_ENV=production
+    container_name: clash-converter-frontend-prod
     restart: unless-stopped
+    
+    # 网络配置
     ports:
-      # 使用不同端口，避免与现有系统冲突
-      - "127.0.0.1:3001:80"
-    depends_on:
-      - clash-backend
+      - "127.0.0.1:3001:8080"  # 仅本地监听
     networks:
       - clash-network
+      - monitoring
+    
+    # 环境变量
+    environment:
+      - NGINX_WORKER_PROCESSES=auto
+      - NGINX_WORKER_CONNECTIONS=2048
+    
+    # 数据卷
     volumes:
       - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    
+    # 依赖关系
+    depends_on:
+      clash-backend:
+        condition: service_healthy
+    
+    # 生产级资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+          pids: 50
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+      <<: *production-restart
+    
+    # 生产级安全配置
+    <<: *production-security
+    cap_add:
+      - NET_BIND_SERVICE
+    tmpfs:
+      - /tmp:noexec,nosuid,nodev,size=100m
+      - /var/cache/nginx:noexec,nosuid,nodev,size=100m
+      - /var/run/nginx:noexec,nosuid,nodev,size=20m
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+      nproc: 65536
+    
+    # 生产级健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      <<: *production-healthcheck
+    
+    # 生产级日志
+    <<: *production-logging
+    
+    # 标签和元数据
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.clash-frontend.rule=Host(`sub.guancn.me`) && PathPrefix(`/clash`)"
+      - "traefik.http.routers.clash-frontend.tls=true"
+      - "traefik.http.services.clash-frontend.loadbalancer.server.port=8080"
+      - "com.docker.compose.service=clash-frontend"
+      - "com.docker.compose.project=clash-converter-prod"
+
+  # 生产级反向代理（可选）
+  nginx-proxy:
+    image: nginx:1.24-alpine
+    container_name: clash-converter-nginx-prod
+    restart: unless-stopped
+    
+    # 网络配置
+    ports:
+      - "80:8080"
+      - "443:8443"
+    networks:
+      - clash-network
+      - public
+    
+    # 配置文件
+    volumes:
+      - ./deploy/nginx-production.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/ssl:/etc/nginx/ssl:ro
+      - /etc/localtime:/etc/localtime:ro
+    
+    # 依赖关系
+    depends_on:
+      clash-backend:
+        condition: service_healthy
+      clash-frontend:
+        condition: service_healthy
+    
+    # 生产级资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+          pids: 100
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+      <<: *production-restart
+    
+    # 生产级安全配置
+    <<: *production-security
+    cap_add:
+      - NET_BIND_SERVICE
+    tmpfs:
+      - /tmp:noexec,nosuid,nodev,size=100m
+      - /var/cache/nginx:noexec,nosuid,nodev,size=200m
+      - /var/run:noexec,nosuid,nodev,size=20m
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    
+    # 生产级健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      <<: *production-healthcheck
+    
+    # 生产级日志
+    <<: *production-logging
+    
+    # 标签和元数据
+    labels:
+      - "traefik.enable=false"  # 直接暴露，不通过 traefik
+      - "com.docker.compose.service=nginx-proxy"
+      - "com.docker.compose.project=clash-converter-prod"
+    
+    profiles:
+      - nginx-proxy
+
+  # 监控服务（可选）
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: clash-converter-prometheus
+    restart: unless-stopped
+    
+    # 网络配置
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks:
+      - monitoring
+    
+    # 配置文件
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    
+    # 命令参数
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+    
+    # 安全配置
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: false  # Prometheus 需要写入数据
+    
+    <<: *production-logging
+    
+    profiles:
+      - monitoring
+
+  # 日志聚合服务
+  fluentd:
+    image: fluentd:v1.16-1
+    container_name: clash-converter-fluentd
+    restart: unless-stopped
+    
+    # 网络配置
+    ports:
+      - "127.0.0.1:24224:24224"
+    networks:
+      - monitoring
+    
+    # 配置文件
+    volumes:
+      - ./monitoring/fluentd.conf:/fluentd/etc/fluent.conf:ro
+      - fluentd-logs:/var/log/fluentd-logs
+    
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    
+    # 安全配置
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: false
+    
+    profiles:
+      - monitoring
 
 networks:
+  # 内部服务网络
   clash-network:
     driver: bridge
-    name: clash-network
+    name: clash-network-prod
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+    driver_opts:
+      com.docker.network.bridge.name: clash-prod
+      com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+      com.docker.network.bridge.host_binding_ipv4: "127.0.0.1"
+  
+  # 公共访问网络
+  public:
+    driver: bridge
+    name: clash-public-prod
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
+    driver_opts:
+      com.docker.network.bridge.name: clash-public
+      com.docker.network.bridge.enable_icc: "false"
+  
+  # 监控网络
+  monitoring:
+    driver: bridge
+    name: clash-monitoring
+    ipam:
+      config:
+        - subnet: 172.32.0.0/24
+    driver_opts:
+      com.docker.network.bridge.name: clash-monitor
+      com.docker.network.bridge.enable_icc: "true"
+
+volumes:
+  # 后端日志存储
+  backend-logs:
+    driver: local
+    name: clash-backend-logs-prod
+    driver_opts:
+      type: none
+      o: bind
+      device: ./backend/logs
+  
+  # Prometheus 数据存储
+  prometheus-data:
+    driver: local
+    name: clash-prometheus-data
+    driver_opts:
+      type: none
+      o: bind
+      device: ./monitoring/prometheus-data
+  
+  # Fluentd 日志存储
+  fluentd-logs:
+    driver: local
+    name: clash-fluentd-logs
+    driver_opts:
+      type: none
+      o: bind  
+      device: ./monitoring/fluentd-logs
+  
+  # 临时数据存储
+  temp-data:
+    driver: local
+    name: clash-temp-prod
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=500m,uid=10001,gid=10001,noexec,nosuid,nodev

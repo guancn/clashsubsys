@@ -32,6 +32,33 @@ class SubscriptionParser:
             'wireguard': self._parse_wireguard,
         }
     
+    def _safe_b64decode(self, encoded_str: str) -> str:
+        """
+        安全的Base64解码，自动修复padding问题
+        
+        Args:
+            encoded_str: Base64编码的字符串
+            
+        Returns:
+            解码后的字符串
+            
+        Raises:
+            Exception: 解码失败时抛出异常
+        """
+        try:
+            # 移除潜在的空白字符
+            encoded_str = encoded_str.strip()
+            
+            # 自动修复Base64 padding
+            missing_padding = len(encoded_str) % 4
+            if missing_padding:
+                encoded_str += '=' * (4 - missing_padding)
+            
+            return base64.b64decode(encoded_str).decode('utf-8')
+        except Exception as e:
+            logger.debug(f"Base64 decode failed for '{encoded_str[:50]}...': {e}")
+            raise
+    
     def parse_subscription(self, content: str) -> List[ProxyNode]:
         """
         解析订阅内容
@@ -45,7 +72,7 @@ class SubscriptionParser:
         try:
             # 尝试 base64 解码
             try:
-                decoded_content = base64.b64decode(content).decode('utf-8')
+                decoded_content = self._safe_b64decode(content)
             except Exception:
                 decoded_content = content
             
@@ -259,7 +286,7 @@ class SubscriptionParser:
             encoded_part = parsed.netloc
             if '@' not in encoded_part:
                 # 格式1: ss://base64(method:password@server:port)
-                decoded = base64.b64decode(encoded_part).decode('utf-8')
+                decoded = self._safe_b64decode(encoded_part)
                 if '@' in decoded:
                     auth_part, server_part = decoded.rsplit('@', 1)
                     method, password = auth_part.split(':', 1)
@@ -269,7 +296,7 @@ class SubscriptionParser:
             else:
                 # 格式2: ss://base64(method:password)@server:port
                 auth_encoded, server_part = encoded_part.split('@', 1)
-                auth_decoded = base64.b64decode(auth_encoded).decode('utf-8')
+                auth_decoded = self._safe_b64decode(auth_encoded)
                 method, password = auth_decoded.split(':', 1)
                 server, port = server_part.split(':', 1)
             
@@ -295,7 +322,7 @@ class SubscriptionParser:
             # ssr://base64(server:port:protocol:method:obfs:password_base64/?params)
             
             encoded_part = url[6:]  # 移除 "ssr://"
-            decoded = base64.b64decode(encoded_part).decode('utf-8')
+            decoded = self._safe_b64decode(encoded_part)
             
             parts = decoded.split('/')
             main_part = parts[0]
@@ -303,7 +330,7 @@ class SubscriptionParser:
             
             # 解析主要部分
             server, port, protocol, method, obfs, password_encoded = main_part.split(':')
-            password = base64.b64decode(password_encoded).decode('utf-8')
+            password = self._safe_b64decode(password_encoded)
             
             # 解析参数
             params = {}
@@ -312,7 +339,7 @@ class SubscriptionParser:
                 for param in param_str.split('&'):
                     if '=' in param:
                         key, value = param.split('=', 1)
-                        params[key] = base64.b64decode(value).decode('utf-8')
+                        params[key] = self._safe_b64decode(value)
             
             name = params.get('remarks', f"{server}:{port}")
             
@@ -340,7 +367,7 @@ class SubscriptionParser:
             # vmess://base64(json_config)
             
             encoded_part = url[8:]  # 移除 "vmess://"
-            decoded = base64.b64decode(encoded_part).decode('utf-8')
+            decoded = self._safe_b64decode(encoded_part)
             config = json.loads(decoded)
             
             return ProxyNode(

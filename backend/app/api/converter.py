@@ -14,13 +14,14 @@ from ..models.schemas import (
     TargetFormat, ErrorResponse
 )
 from ..core.converter import SubscriptionConverter
+from ..core.performance.cache_manager import get_cache_manager
 from ..utils.helpers import validate_url, sanitize_filename
 
 router = APIRouter()
 converter = SubscriptionConverter()
 
-# 存储转换结果的内存缓存（生产环境建议使用 Redis）
-conversion_cache: Dict[str, Dict[str, Any]] = {}
+# 使用专业的缓存管理器替代简单的内存字典
+cache_manager = get_cache_manager()
 
 
 @router.post("/convert", response_model=ConversionResponse)
@@ -47,12 +48,15 @@ async def convert_subscription(request: ConversionRequest):
             # 生成配置 ID 并缓存结果
             config_id = hashlib.md5(str(request.url).encode()).hexdigest()[:12]
             
-            conversion_cache[config_id] = {
+            cache_data = {
                 'config': result.config,
                 'timestamp': datetime.now(),
                 'nodes_count': result.nodes_count,
                 'filename': request.filename  # 存储用户自定义文件名
             }
+            
+            # 使用专业缓存管理器存储，TTL为180秒
+            cache_manager.set('generated_config', config_id, cache_data)
             
             # 生成下载链接（考虑nginx路径前缀）
             result.download_url = f"/clash/api/sub/{config_id}"
@@ -123,10 +127,9 @@ async def download_config(
         format: 输出格式（yaml 或 json）
         filename: 自定义文件名
     """
-    if config_id not in conversion_cache:
+    cached_data = cache_manager.get('generated_config', config_id)
+    if cached_data is None:
         raise HTTPException(status_code=404, detail="配置不存在或已过期")
-    
-    cached_data = conversion_cache[config_id]
     config_content = cached_data['config']
     
     # 确定响应格式
@@ -172,10 +175,9 @@ async def get_config_info(config_id: str):
     Args:
         config_id: 配置 ID
     """
-    if config_id not in conversion_cache:
+    cached_data = cache_manager.get('generated_config', config_id)
+    if cached_data is None:
         raise HTTPException(status_code=404, detail="配置不存在或已过期")
-    
-    cached_data = conversion_cache[config_id]
     
     return {
         "config_id": config_id,
@@ -257,8 +259,7 @@ async def delete_cached_config(config_id: str):
     Args:
         config_id: 配置 ID
     """
-    if config_id in conversion_cache:
-        del conversion_cache[config_id]
+    if cache_manager.delete('generated_config', config_id):
         return {"message": "配置已删除"}
     else:
         raise HTTPException(status_code=404, detail="配置不存在")
@@ -269,9 +270,12 @@ async def get_cache_stats():
     """
     获取缓存统计信息
     """
+    stats = cache_manager.get_stats()
     return {
-        "cached_configs": len(conversion_cache),
-        "total_memory_mb": len(str(conversion_cache)) / (1024 * 1024)
+        "cached_configs": stats.get('types', {}).get('generated_config', 0),
+        "total_memory_mb": stats['memory_usage_mb'],
+        "hit_rate": stats['hit_rate'],
+        "cache_details": stats
     }
 
 
@@ -280,9 +284,8 @@ async def clear_cache():
     """
     清空所有缓存
     """
-    global conversion_cache
-    conversion_cache.clear()
-    return {"message": "缓存已清空"}
+    cache_manager.clear_type('generated_config')
+    return {"message": "配置缓存已清空"}
 
 
 # 注意：异常处理器应该在main.py中注册到FastAPI应用上，而不是在路由器上
