@@ -1,0 +1,195 @@
+# 并行运行配置 - 新系统使用不同端口避免与现有系统冲突
+# 现有系统占用: 25500(后端), 8080(前端), 80/443(nginx)
+# 新系统使用: 8002(后端), 3002(前端), 8081/8443(nginx)
+
+version: '3.8'
+
+# 安全配置全局变量
+x-security-opts: &security-opts
+  security_opt:
+    - no-new-privileges: true
+  cap_drop:
+    - ALL
+  read_only: true
+  
+x-logging: &logging
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  # 新系统后端服务 - 使用独立端口8002
+  clash-backend-v2:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: clash-converter-backend-v2
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8002:8000"  # 避免与现有系统的8000端口冲突
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend/config.yaml:/app/config.yaml:ro
+      - ./backend-v2/logs:/app/logs  # 独立日志目录
+    networks:
+      - clash-network-v2
+    
+    # 资源限制 - 为双系统运行优化
+    deploy:
+      resources:
+        limits:
+          cpus: '0.6'  # 进一步优化CPU限制为现有系统留出更多资源
+          memory: 350M  # 适度减少内存限制
+        reservations:
+          cpus: '0.15'
+          memory: 180M
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+    
+    # 安全配置
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: false  # 后端需要写日志
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+      - /app/temp:noexec,nosuid,size=50m
+    
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+    
+    <<: *logging
+
+  # 新系统前端服务 - 使用独立端口3002
+  clash-frontend-v2:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=http://localhost:8002
+        - VITE_APP_PREFIX=/clash-v2/
+    container_name: clash-converter-frontend-v2
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3002:8080"  # 避免与现有系统的3000端口冲突
+    depends_on:
+      clash-backend-v2:
+        condition: service_healthy
+    networks:
+      - clash-network-v2
+    environment:
+      - NGINX_WORKER_PROCESSES=auto
+      - NGINX_WORKER_CONNECTIONS=1024
+    
+    # 资源限制 - 前端服务优化
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'  # 进一步优化CPU限制
+          memory: 180M  # 适度减少内存限制
+        reservations:
+          cpus: '0.08'
+          memory: 90M
+    
+    # 安全配置
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=50m
+      - /var/cache/nginx:noexec,nosuid,size=50m
+      - /var/run/nginx:noexec,nosuid,size=10m
+    
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+    
+    <<: *logging
+
+  # Nginx 反向代理 - 使用备用端口8081/8443
+  nginx-v2:
+    image: nginx:1.24-alpine
+    container_name: clash-converter-nginx-v2
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:8080"   # HTTP备用端口
+      - "127.0.0.1:8443:8443"   # HTTPS备用端口
+    volumes:
+      - ./deploy-v2/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy-v2/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      clash-backend-v2:
+        condition: service_healthy
+      clash-frontend-v2:
+        condition: service_healthy
+    networks:
+      - clash-network-v2
+    
+    # 资源限制 - Nginx服务优化
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'  # Nginx轻量级服务，进一步优化
+          memory: 128M  # 减少内存占用
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+    
+    # 安全配置
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=50m
+      - /var/cache/nginx:noexec,nosuid,size=100m
+      - /var/run:noexec,nosuid,size=10m
+    
+    <<: *logging
+
+networks:
+  # 独立网络避免与现有系统冲突
+  clash-network-v2:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/24  # 不同于现有系统的172.20.0.0/24
+    driver_opts:
+      com.docker.network.bridge.name: clash-bridge-v2
+      com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+
+volumes:
+  # 独立数据卷
+  backend-logs-v2:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./backend-v2/logs
